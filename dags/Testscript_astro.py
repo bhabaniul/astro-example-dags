@@ -1,51 +1,49 @@
-from airflow import DAG
-from airflow.operators.python import PythonOperator, BranchPythonOperator
+"""
+## Print the number of people currently in space
+
+This DAG will pull the number of people currently in space. The number is pulled
+from XCom and was pushed by the `get_astronauts` task in the `example_astronauts` DAG.
+"""
+
+from airflow import Dataset
+from airflow.decorators import dag, task
 from airflow.operators.bash import BashOperator
-from datetime import datetime
-from random import randint
+from airflow.models.baseoperator import chain
+from pendulum import datetime
 
-def _choose_best_model(ti):
-  accuracies = ti.xcom_pull(task_ids=[
-    'training_model_A',
-    'training_model_B',
-    'training_model_C'
-  ])
-  if max(accuracies) > 8:
-    return 'is_accurate'
-  return 'is_inaccurate'
 
-def _training_model(model):
-  print(model)
-  return randint(1, 10)
+@dag(
+    start_date=datetime(2023, 6, 1),
+    schedule=[Dataset("current_astronauts")],
+    catchup=False,
+    doc_md=__doc__,
+    default_args={"owner": "airflow", "retries": 3},
+    tags=["My First DAG!"],
+)
+def my_astronauts_dag():
+    @task
+    def print_num_people_in_space(**context) -> None:
+        """
+        This task pulls the number of people currently in space from XCom. The number is
+        pushed by the `get_astronauts` task in the `example_astronauts` DAG.
+        """
 
-with DAG("my_dag",
-  start_date=datetime(2023, 1 ,1), 
-  schedule_interval='@daily', 
-  catchup=False):
+        num_people_in_space = context["ti"].xcom_pull(
+            dag_id="example_astronauts",
+            task_ids="get_astronauts",
+            key="number_of_people_in_space",
+            include_prior_dates=True,
+        )
 
-  training_model_tasks = [
-    PythonOperator(
-      task_id=f"training_model_{model_id}",
-      python_callable=_training_model,
-      op_kwargs={
-        "model": model_id
-      }
-    ) for model_id in ['A', 'B', 'C']
-  ]
+        print(f"There are currently {num_people_in_space} people in space.")
 
-  choose_best_model = BranchPythonOperator(
-    task_id="choose_best_model",
-    python_callable=_choose_best_model
-  )
+    print_reaction = BashOperator(
+        task_id="print_reaction",
+        bash_command="echo This is awesome!",
+    )
 
-  accurate = BashOperator(
-    task_id="is_accurate",
-    bash_command="echo 'accurate'"
-  )
+    chain(print_num_people_in_space(), print_reaction)
+    # print_num_people_in_space() >> print_reaction
 
-  inaccurate = BashOperator(
-    task_id="is_inaccurate",
-    bash_command=" echo 'inaccurate'"
-  )
 
-  training_model_tasks >> choose_best_model >> [is_accurate, is_inaccurate]
+my_astronauts_dag()
