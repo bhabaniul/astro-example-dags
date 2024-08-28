@@ -28,10 +28,10 @@ dag = DAG(
 )
  
 # Define tasks
-start = DummyOperator(
+#start = DummyOperator(
     task_id='start',
     dag=dag
-)
+#)
  
 hello_task = PythonOperator(
     task_id='hello_task',
